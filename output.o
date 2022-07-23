@@ -1,4 +1,5 @@
 SECAO TEXTO
+LOAD N1 ;faz esta operação se L1 for verdadeiro
 ROT: INPUT N1
 COPY N1, N4 ;comentário qualquer
 COPY N2, N3
