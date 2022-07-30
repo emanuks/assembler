@@ -15,11 +15,13 @@ bool isNumber(string);
 
 bool isHex(string);
 
-string getOpcode(string, string[], string[]);
+string getOpcode(string, string [], string []);
 
-int getValue(string, string[], int []);
+int getValue(string, string [], int []);
 
-string instructionsTable[] = {"ADD", "SUB", "MUL", "DIV", "JMP", "JMPN", "JMPP", "JMPZ", "COPY", "LOAD", "STORE", "INPUT", "OUTPUT", "STOP"};
+bool getIsExtern(string , string [], bool []);
+
+string instructionsTable[] = {"ADD", "SUB", "MULT", "DIV", "JMP", "JMPN", "JMPP", "JMPZ", "COPY", "LOAD", "STORE", "INPUT", "OUTPUT", "STOP"};
 
 string directivesTable[] = {"SPACE", "CONST", "BEGIN", "END", "EXTERN", "PUBLIC", "EQU", "IF"};
 
@@ -31,9 +33,13 @@ int main(int argc, char **argv) {
     string line, label, operation, operators, operator1, operator2, comments, object, originalLine;
     string symbolsTable[100];
     string equTable[100];
+    string useTableSymbol[100];
+    int useTableAddr[100];
+    bool isExtern[100];
     int symbolsPositionTable[100];
     size_t labelAux, operationAux, operatorsAux, commentsAux;
-    int lineCounter = 0, positionCounter = 0, symbolsTableIndex = 0;
+    int lineCounter = 0, positionCounter = 0, symbolsTableIndex = 0, useTableIndex = 0;
+    bool hasBegin = false;
 
     file.open(argv[2]);
 
@@ -118,6 +124,7 @@ int main(int argc, char **argv) {
 
                         line = line.substr(labelAux + 2);
                         operationAux = line.find_first_of(' ');
+
                         if (line == "SPACE") {
                             positionCounter++;
                             continue;
@@ -144,6 +151,14 @@ int main(int argc, char **argv) {
                             } else {
                                 cout << "ERROR: Unknown operation -> " << operation << endl;
                                 break;
+                            }
+                        } else {
+                            operation = line;
+
+                            if (operation == "BEGIN") {
+                                hasBegin = true;
+                            } else if (operation == "EXTERN") {
+                                isExtern[symbolsTableIndex-1] = true;
                             }
                         }
                     }
@@ -196,6 +211,7 @@ int main(int argc, char **argv) {
 
                         if (operationAux != string::npos) {
                             operation = line.substr(0, operationAux);
+
                             line = line.substr(operationAux + 1);
                             commentsAux = line.find_first_of(';');
                             if (commentsAux != string::npos) {
@@ -262,9 +278,7 @@ int main(int argc, char **argv) {
                         break;
                     }
 
-
                     if (!isNumber(operator2) && !findSymbolOnTable(operator2, symbolsTable, 100)) {
-                        cout << operator2;
                         cout << "ERROR: Symbol undefined -> " << operator2 << endl;
                         break;
                     }
@@ -272,8 +286,20 @@ int main(int argc, char **argv) {
                     if (findSymbolOnTable(operation, instructionsTable, 14)) {
                         positionCounter++;
                         if (operation != "STOP") {
+                            if (getIsExtern(operator1, symbolsTable, isExtern)) {
+                                useTableSymbol[useTableIndex] = operator1;
+                                useTableAddr[useTableIndex] = positionCounter;
+                                useTableIndex++;
+                            }
+
                             positionCounter++;
                             if (operation == "COPY") {
+                                if (getIsExtern(operator2, symbolsTable, isExtern)) {
+                                    useTableSymbol[useTableIndex] = operator1;
+                                    useTableAddr[useTableIndex] = positionCounter;
+                                    useTableIndex++;
+                                }
+
                                 positionCounter++;
                             }
                         }
@@ -305,15 +331,17 @@ int main(int argc, char **argv) {
                                 break;
                             }
 
-                            object + getOpcode(operation, instructionsTable, opcodes) + " " +
+                            object += getOpcode(operation, instructionsTable, opcodes) + " " +
                             to_string(getValue(operator1, symbolsTable, symbolsPositionTable));
                         }
                     } else if (findSymbolOnTable(operation, directivesTable, 8)) {
-                        positionCounter++;
-                        if (operation == "SPACE") {
-                            object += '0';
-                        } else if (operation == "CONST") {
-                            object += operator1;
+                        if (operation != "BEGIN" && operation != "EXTERN" && operation != "PUBLIC" && operation != "END") {
+                            positionCounter++;
+                            if (operation == "SPACE") {
+                                object += '0';
+                            } else if (operation == "CONST") {
+                                object += operator1;
+                            }
                         }
                     } else {
                         cout << "ERROR: Unknown operation -> " << operation << endl;
@@ -325,6 +353,26 @@ int main(int argc, char **argv) {
                 }
             }
         }
+
+        if (hasBegin) {
+            objectFile << "TABELA USO" << endl;
+
+            for (int i = 0; i < useTableIndex; i++) {
+                objectFile << useTableSymbol[i] << " " << useTableAddr[i] << endl;
+            }
+
+            objectFile << endl;
+
+            objectFile << "TABELA DEF" << endl;
+            for (int i = 0; i < symbolsTableIndex; i++) {
+                if (!isExtern[i]) {
+                    objectFile << symbolsTable[i] << " " << symbolsPositionTable[i] << endl;
+                }
+            }
+
+            objectFile << endl;
+        }
+
         object.pop_back();
         objectFile << object << endl;
         objectFile.close();
@@ -363,7 +411,7 @@ void printSymbolTable(string symbolsTable[], int symbolsPositionTable[], int ind
 }
 
 bool isNumber(string s) {
-    if (s[0] != '-' && s[0] != '+') return false;
+    if (s[0] != '-' && s[0] != '+' && !isdigit(s[0])) return false;
     s = s.substr(1);
     for (char const &c : s) {
         if (isdigit(c) == 0) return false;
@@ -384,4 +432,10 @@ string getEquVal(string operator1, string symbolsTable[], string equTable[]) {
     for (int i = 0; i < 100; i++)
         if (operator1 == symbolsTable[i]) return equTable[i];
     return "";
+}
+
+bool getIsExtern(string operator1, string symbolsTable[], bool isExtern[]) {
+    for (int i = 0; i < 100; i++)
+        if (operator1 == symbolsTable[i]) return isExtern[i];
+    return false;
 }
